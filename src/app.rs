@@ -3,15 +3,10 @@ use crate::audio;
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
+#[derive(Default)]
 pub struct TemplateApp {
     #[serde(skip)]
     handle: Option<audio::Handle>,
-}
-
-impl Default for TemplateApp {
-    fn default() -> Self {
-        Self { handle: None }
-    }
 }
 
 impl TemplateApp {
