@@ -8,6 +8,8 @@ pub struct TemplateApp {
 
 use crate::audio;
 
+use fundsp::hacker::*;
+
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -61,7 +63,15 @@ impl eframe::App for TemplateApp {
                 .add_enabled(self.audio_started == false, egui::Button::new("Beep"))
                 .clicked()
             {
-                audio::start();
+                let mut net = Net64::new(0, 1);
+                // Add nodes, obtaining their IDs.
+                let dc_id = net.push(Box::new(dc(220.0)));
+                let sine_id = net.push(Box::new(sine()));
+                // Connect nodes.
+                net.pipe(dc_id, sine_id);
+                net.pipe_output(sine_id);
+
+                audio::start(net);
                 self.audio_started = true;
             };
         });

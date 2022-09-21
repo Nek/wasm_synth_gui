@@ -4,10 +4,10 @@ use cpal::traits::StreamTrait;
 
 // use cpal::Stream;
 
+use fundsp::prelude::AudioUnit64;
+use fundsp::prelude::Net64;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::JsCast;
-
-use fundsp::hacker::*;
 
 #[cfg(target_arch = "wasm32")]
 pub struct ClickListener {
@@ -65,7 +65,7 @@ fn resume<'a>(cls: Closure<dyn FnMut() + 'static>) {
     ClickListener::new().add(cls);
 }
 
-fn run<T>(device: &mut cpal::Device, config: &cpal::StreamConfig)
+fn run<T, K>(device: &mut cpal::Device, config: &cpal::StreamConfig, graph: Net64)
 where
     T: cpal::Sample,
 {
@@ -82,7 +82,8 @@ where
     // let f = 110.0;
     // let m = 5.0;
     // let c = oversample(sine_hz(f) * f * m + f >> sine());
-    let c = oversample(sine_hz(440.0));
+    let c = graph;
+    //oversample(sine_hz(440.0));
     // Pulse wave.
     // let c = lfo(|t| {
     //     let pitch = 110.0;
@@ -139,6 +140,7 @@ where
     //>> (multipass() & 0.2 * reverb_stereo(10.0, 3.0))
     // >> limiter_stereo((1.0, 5.0));
     //let mut c = c * 0.1;
+
     c.reset(Some(sample_rate));
 
     let mut next_value = move || c.get_stereo();
@@ -188,7 +190,7 @@ where
     }
 }
 
-fn run_audio() {
+fn run_audio(graph: Net64) {
     let host = cpal::default_host();
     let mut device = host
         .default_output_device()
@@ -196,22 +198,22 @@ fn run_audio() {
     let config = device.default_output_config().unwrap();
 
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(&mut device, &config.into()),
-        cpal::SampleFormat::I16 => run::<i16>(&mut device, &config.into()),
-        cpal::SampleFormat::U16 => run::<u16>(&mut device, &config.into()),
+        cpal::SampleFormat::F32 => run::<f32, Net64>(&mut device, &config.into(), graph),
+        cpal::SampleFormat::I16 => run::<i16, Net64>(&mut device, &config.into(), graph),
+        cpal::SampleFormat::U16 => run::<u16, Net64>(&mut device, &config.into(), graph),
     };
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn start() {
+pub fn start(graph: Net64) {
     use std::thread;
 
     thread::spawn(move || {
-        let _stream = run_audio();
+        let _stream = run_audio(graph);
     });
 }
 
 #[cfg(target_arch = "wasm32")]
-pub fn start() {
-    let _stream = run_audio();
+pub fn start(graph: Net64) {
+    let _stream = run_audio(graph);
 }
