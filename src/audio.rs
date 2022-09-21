@@ -134,16 +134,14 @@ fn run_audio(graph: Net64) {
     };
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 pub fn start(graph: Net64) {
     use std::thread;
 
+    #[cfg(not(target_arch = "wasm32"))]
     thread::spawn(move || {
-        let _stream = run_audio(graph);
+        run_audio(graph);
     });
-}
 
-#[cfg(target_arch = "wasm32")]
-pub fn start(graph: Net64) {
-    let _stream = run_audio(graph);
+    #[cfg(target_arch = "wasm32")]
+    run_audio(graph);
 }
