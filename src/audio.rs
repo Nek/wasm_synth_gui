@@ -44,7 +44,9 @@ impl<'a> AddClickCb<'a> for ClickListener {
             let window = web_sys::window().expect("no global `window` exists");
             let document: web_sys::Document =
                 window.document().expect("should have a document on window");
-            document.remove_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+            document
+                .remove_event_listener_with_callback("click", cb.as_ref().unchecked_ref())
+                .expect("can't remove \"click\" callback");
         }) as Box<dyn FnMut()>);
 
         document
@@ -52,37 +54,15 @@ impl<'a> AddClickCb<'a> for ClickListener {
             .unwrap();
 
         remove_cb.forget();
-        // cb.forget();
-        // ClickListener { cb: Some(cb) }
     }
 }
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::Closure;
 
-// when compiling to web using trunk.
 #[cfg(target_arch = "wasm32")]
 fn resume<'a>(cls: Closure<dyn FnMut() + 'static>) {
-    // let cb: &Closure<dyn FnMut()> = cls as &'static Closure<dyn FnMut()>;
-
     ClickListener::new().add(cls);
-
-    // let mut cb: wasm_bindgen::closure::Closure<dyn FnMut(web_sys::Event) + 'static> =
-    //     wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
-    //         stream.play().unwrap();
-    //         document.remove_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
-    //     });
-
-    // let mut options = web_sys::AddEventListenerOptions::new();
-    // document
-    //     .add_event_listener_with_callback_and_add_event_listener_options(
-    //         "click",
-    //         cb.as_ref().unchecked_ref(),
-    //         options.once(true),
-    //     )
-    //     .unwrap();
-
-    // cb.forget();
 }
 
 fn run<T>(device: &mut cpal::Device, config: &cpal::StreamConfig)
@@ -164,7 +144,7 @@ where
     let mut next_value = move || c.get_stereo();
 
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
-    let mut stream = device
+    let stream = device
         .build_output_stream(
             config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
@@ -184,8 +164,8 @@ where
     {
         let box_content = move || stream.play().unwrap();
         let bx: Box<dyn FnMut()> = Box::new(box_content) as Box<dyn FnMut()>;
-        let mut cls = wasm_bindgen::closure::Closure::wrap(bx);
-        let cls = resume(cls);
+        let cls = wasm_bindgen::closure::Closure::wrap(bx);
+        resume(cls);
     }
 }
 
