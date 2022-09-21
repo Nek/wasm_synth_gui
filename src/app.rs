@@ -1,20 +1,18 @@
-use crate::audio;
-
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
-#[derive(Default)]
 pub struct TemplateApp {
-    #[serde(skip)]
-    handle: Option<audio::Handle>,
+    #[serde(skip_serializing)]
+    audio_started: bool,
 }
+
+use crate::audio;
 
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // This is also where you can customized the look at feel of egui using
         // `cc.egui_ctx.set_visuals` and `cc.egui_ctx.set_fonts`.
-
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
@@ -25,11 +23,19 @@ impl TemplateApp {
     }
 }
 
+impl Default for TemplateApp {
+    fn default() -> Self {
+        Self {
+            audio_started: false,
+        }
+    }
+}
+
 impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        let Self { handle } = self;
+        // let Self { stream } = self;
 
         // Examples of how to create different panels and windows.
         // Pick whichever suits you.
@@ -51,8 +57,12 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Audio Panel");
 
-            if ui.button("Beep").clicked() {
-                *handle = Some(audio::beep());
+            if ui
+                .add_enabled(self.audio_started == false, egui::Button::new("Beep"))
+                .clicked()
+            {
+                audio::start();
+                self.audio_started = true;
             };
         });
 
