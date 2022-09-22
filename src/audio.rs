@@ -145,3 +145,24 @@ pub fn start(graph: Net64) {
     #[cfg(target_arch = "wasm32")]
     run_audio(graph);
 }
+
+pub struct AudioEngine {
+    net: Net64,
+}
+
+impl<'a> AudioEngine {
+    pub fn new() -> Self {
+        AudioEngine {
+            net: Net64::new(0, 1),
+        }
+    }
+}
+pub trait Updatable {
+    fn update(&mut self, cb: Box<dyn Fn(&mut Net64) + 'static>) -> ();
+}
+
+impl Updatable for AudioEngine {
+    fn update(self: &mut AudioEngine, cb: Box<(dyn Fn(&mut Net64) + 'static)>) {
+        cb(&mut self.net);
+    }
+}
