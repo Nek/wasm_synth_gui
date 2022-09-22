@@ -1,7 +1,6 @@
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
-pub struct TemplateApp<'a> {
+pub struct TemplateApp {
     stream: Stream,
-    net: &'a Box<Net64>,
 }
 
 use crate::audio;
@@ -13,11 +12,13 @@ use fundsp::hacker::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::{wasm_bindgen, Closure};
 
-impl TemplateApp<'_> {
+impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let (net, stream) = audio::start();
-        TemplateApp { stream, net }
+        let stream = audio::init();
+        #[cfg(not(target_arch = "wasm32"))]
+        stream.pause().unwrap();
+        TemplateApp { stream }
     }
 }
 
@@ -34,7 +35,7 @@ extern "C" {
     fn unlockAudioContext(closure: &Closure<dyn FnMut()>);
 }
 
-impl eframe::App for TemplateApp<'_> {
+impl eframe::App for TemplateApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -61,13 +62,8 @@ impl eframe::App for TemplateApp<'_> {
             ui.heading("Audio Panel");
 
             if ui.add_enabled(true, egui::Button::new("Beep")).clicked() {
-                // Add nodes, obtaining their IDs.
-                let net = &mut self.net;
-                let dc_id = net.push(Box::new(dc(220.0)));
-                let sine_id = net.push(Box::new(sine()));
-                // Connect nodes.
-                net.pipe(dc_id, sine_id);
-                net.pipe_output(sine_id);
+                self.stream.play().unwrap();
+
                 // #[cfg(target_arch = "wasm32")]
                 // {
                 //     let f = || {
