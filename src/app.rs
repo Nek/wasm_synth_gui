@@ -1,38 +1,68 @@
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 pub struct TemplateApp {
-    stream: Stream,
+    stream: Arc<Stream>,
+    is_playing: bool,
 }
+
+use std::sync::Arc;
 
 use crate::audio;
 #[allow(unused_imports)]
 use cpal::traits::StreamTrait;
 use cpal::Stream;
-use fundsp::hacker::*;
 
 #[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::{wasm_bindgen, Closure};
-
-impl TemplateApp {
-    /// Called once before the first frame.
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let stream = audio::init();
-        #[cfg(not(target_arch = "wasm32"))]
-        stream.pause().unwrap();
-        TemplateApp { stream }
-    }
-}
+use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(inline_js = " \
     export function unlockAudioContext(cb) { \
     const b = document.body; \
-    const events = [\"touchstart\", \"touchend\", \"mousedown\", \"keydown\"]; \
+    const events = [\"click\", \"touchstart\", \"touchend\", \"mousedown\", \"keydown\"]; \
     events.forEach(e => b.addEventListener(e, unlock, false)); \
     function unlock() {cb(); clean();} \
     function clean() {events.forEach(e => b.removeEventListener(e, unlock));} \
 }")]
 extern "C" {
     fn unlockAudioContext(closure: &Closure<dyn FnMut()>);
+}
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+#[cfg(target_arch = "wasm32")]
+macro_rules! console_log {
+    // Note that this is using the `log` function imported above during
+    // `bare_bones`
+    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+}
+
+impl TemplateApp {
+    /// Called once before the first frame.
+    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+        let stream = Arc::new(audio::init());
+
+        #[cfg(not(target_arch = "wasm32"))]
+        stream.pause().unwrap();
+
+        #[cfg(target_arch = "wasm32")]
+        {
+            let s = stream.clone();
+            let f = move || {
+                s.pause().unwrap();
+            };
+            let cb = Closure::once(f);
+            unlockAudioContext(&cb);
+            cb.forget()
+        }
+        TemplateApp {
+            stream,
+            is_playing: false,
+        }
+    }
 }
 
 impl eframe::App for TemplateApp {
@@ -62,19 +92,13 @@ impl eframe::App for TemplateApp {
             ui.heading("Audio Panel");
 
             if ui.add_enabled(true, egui::Button::new("Beep")).clicked() {
-                self.stream.play().unwrap();
+                if self.is_playing {
+                    self.stream.pause().unwrap();
+                } else {
+                    self.stream.play().unwrap();
+                }
 
-                // #[cfg(target_arch = "wasm32")]
-                // {
-                //     let f = || {
-                //         if let Some(stream) = stream {
-                //             stream.play().unwrap();
-                //         };
-                //     };
-                //     // let bx: Box<dyn Fn()> = Box::new(f);
-                //     let cb = Closure::once(f);
-                //     unlockAudioContext(&cb);
-                // }
+                self.is_playing = !self.is_playing;
             };
         });
 
