@@ -2,11 +2,12 @@
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)] // if we add new fields, give them default values when deserializing old state
 pub struct TemplateApp {
-    #[serde(skip_serializing)]
-    audio_started: bool,
+    #[serde(skip)]
+    engine: AudioEngine,
 }
 
-use crate::audio;
+use crate::audio::AudioEngine;
+use crate::audio::Updatable;
 
 use fundsp::hacker::*;
 
@@ -28,7 +29,7 @@ impl TemplateApp {
 impl Default for TemplateApp {
     fn default() -> Self {
         Self {
-            audio_started: false,
+            engine: AudioEngine::new(),
         }
     }
 }
@@ -59,20 +60,16 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Audio Panel");
 
-            if ui
-                .add_enabled(self.audio_started == false, egui::Button::new("Beep"))
-                .clicked()
-            {
-                let mut net = Net64::new(0, 1);
+            if ui.add_enabled(true, egui::Button::new("Beep")).clicked() {
                 // Add nodes, obtaining their IDs.
-                let dc_id = net.push(Box::new(dc(220.0)));
-                let sine_id = net.push(Box::new(sine()));
-                // Connect nodes.
-                net.pipe(dc_id, sine_id);
-                net.pipe_output(sine_id);
-
-                audio::start(net);
-                self.audio_started = true;
+                let bx: Box<dyn FnMut(&mut Net64)> = Box::new(|net: &mut Net64| {
+                    let dc_id = net.push(Box::new(dc(220.0)));
+                    let sine_id = net.push(Box::new(sine()));
+                    // Connect nodes.
+                    net.pipe(dc_id, sine_id);
+                    net.pipe_output(sine_id);
+                });
+                self.engine.update(bx)
             };
         });
 
