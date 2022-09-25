@@ -1,10 +1,21 @@
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 pub struct TemplateApp {
     stream: Arc<Stream>,
+    // rx_req_sample: Receiver<bool>,
+    // tx_sample: Sender<(f64, f64)>,
+    net_mtx: Arc<Mutex<Net64>>,
     is_playing: bool,
 }
 
+use fundsp::hacker::*;
+use fundsp::prelude::Net64;
+
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
+
+use std::sync::Mutex;
+use std::thread;
 
 use crate::audio;
 #[allow(unused_imports)]
@@ -33,17 +44,43 @@ extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
 }
-#[cfg(target_arch = "wasm32")]
-macro_rules! console_log {
-    // Note that this is using the `log` function imported above during
-    // `bare_bones`
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
+// #[cfg(target_arch = "wasm32")]
+// macro_rules! console_log {
+//     // Note that this is using the `log` function imported above during
+//     // `bare_bones`
+//     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+// }
 
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let stream = Arc::new(audio::init());
+        let (stream, sample_rate, rx_req_sample, tx_sample): (
+            Arc<Stream>,
+            f64,
+            Receiver<bool>,
+            Sender<(f64, f64)>,
+        ) = audio::init();
+
+        let net_mtx: Arc<Mutex<Net64>> = Arc::new(Mutex::new(Net64::new(0, 1)));
+
+        if let Ok(mut net) = net_mtx.lock() {
+            let dc_id = net.push(Box::new(dc(220.0)));
+            let sine_id = net.push(Box::new(sine()));
+            net.pipe(dc_id, sine_id);
+            net.pipe_output(sine_id);
+        }
+
+        let net_mtx_for_net = net_mtx.clone();
+
+        let _net_thread = thread::spawn(move || {
+            if let Ok(mut net) = net_mtx_for_net.clone().lock() {
+                loop {
+                    rx_req_sample.recv().unwrap();
+                    let res = net.get_stereo();
+                    tx_sample.send(res).unwrap();
+                }
+            }
+        });
 
         #[cfg(not(target_arch = "wasm32"))]
         stream.pause().unwrap();
@@ -61,6 +98,8 @@ impl TemplateApp {
         TemplateApp {
             stream,
             is_playing: false,
+            net_mtx,
+            // net,
         }
     }
 }
@@ -97,7 +136,6 @@ impl eframe::App for TemplateApp {
                 } else {
                     self.stream.play().unwrap();
                 }
-
                 self.is_playing = !self.is_playing;
             };
         });
