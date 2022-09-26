@@ -9,9 +9,9 @@ pub struct TemplateApp {
 
 use fundsp::hacker::*;
 use fundsp::prelude::Net64;
+use std::sync::mpsc::sync_channel;
+use std::sync::mpsc::SyncSender;
 
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use std::sync::Mutex;
@@ -19,6 +19,8 @@ use std::sync::Mutex;
 use std::thread;
 #[cfg(target_arch = "wasm32")]
 use wasm_thread as thread;
+
+use ringbuf::StaticRb;
 
 use crate::audio;
 #[allow(unused_imports)]
@@ -57,18 +59,20 @@ extern "C" {
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let (stream, sample_rate, rx_req_sample, tx_sample): (
-            Arc<Stream>,
-            f64,
-            Receiver<bool>,
-            Sender<(f64, f64)>,
-        ) = audio::init();
+        const RB_SIZE: usize = 1;
+        let mut sample_buf = StaticRb::<(f64, f64), RB_SIZE>::default();
+        let (mut prod, mut cons) = sample_buf.split();
+
+        let (sample_req_tx, sample_req_rx) = sync_channel(1);
+
+        let (stream, sample_rate, sample_resp_tx): (Arc<Stream>, f64, SyncSender<()>) =
+            audio::init(cons, sample_req_tx);
 
         let net_mtx: Arc<Mutex<Net64>> = Arc::new(Mutex::new(Net64::new(0, 1)));
 
         let net_mtx2 = net_mtx.clone();
 
-        let net_thread = thread::spawn(move || {
+        let _net_thread = thread::spawn(move || {
             if let Ok(mut net) = net_mtx2.lock() {
                 let dc_id = net.push(Box::new(dc(220.0)));
                 let sine_id = net.push(Box::new(sine()));
@@ -78,9 +82,10 @@ impl TemplateApp {
                 net.reset(Some(sample_rate));
 
                 loop {
-                    rx_req_sample.recv().unwrap();
+                    sample_req_rx.recv().unwrap();
                     let res = net.get_stereo();
-                    tx_sample.send(res).unwrap();
+                    prod.push(res).unwrap();
+                    sample_resp_tx.send(()).unwrap();
                 }
             }
         });

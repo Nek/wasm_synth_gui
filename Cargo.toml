@@ -29,6 +29,7 @@ wasm-bindgen = "0.2.83"
 
 [profile.release]
 opt-level = "z" # fast and small wasm
+target = "wasm32-unknown-unknown"
 # strip = true
 # lto = true
 # panic = "abort"
