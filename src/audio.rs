@@ -1,8 +1,6 @@
 use cpal::traits::DeviceTrait;
 use cpal::traits::HostTrait;
 
-use std::sync::mpsc::RecvError;
-
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
 

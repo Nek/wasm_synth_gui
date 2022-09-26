@@ -15,7 +15,10 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use std::sync::Mutex;
+#[cfg(not(target_arch = "wasm32"))]
 use std::thread;
+#[cfg(target_arch = "wasm32")]
+use wasm_thread as thread;
 
 use crate::audio;
 #[allow(unused_imports)]
@@ -63,17 +66,17 @@ impl TemplateApp {
 
         let net_mtx: Arc<Mutex<Net64>> = Arc::new(Mutex::new(Net64::new(0, 1)));
 
-        if let Ok(mut net) = net_mtx.lock() {
-            let dc_id = net.push(Box::new(dc(220.0)));
-            let sine_id = net.push(Box::new(sine()));
-            net.pipe(dc_id, sine_id);
-            net.pipe_output(sine_id);
-        }
+        let net_mtx2 = net_mtx.clone();
 
-        let net_mtx_for_net = net_mtx.clone();
+        let net_thread = thread::spawn(move || {
+            if let Ok(mut net) = net_mtx2.lock() {
+                let dc_id = net.push(Box::new(dc(220.0)));
+                let sine_id = net.push(Box::new(sine()));
+                net.pipe(dc_id, sine_id);
+                net.pipe_output(sine_id);
 
-        let _net_thread = thread::spawn(move || {
-            if let Ok(mut net) = net_mtx_for_net.clone().lock() {
+                net.reset(Some(sample_rate));
+
                 loop {
                     rx_req_sample.recv().unwrap();
                     let res = net.get_stereo();

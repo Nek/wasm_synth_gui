@@ -1,2 +1,9 @@
 [build]
 filehash = false
+pattern_script = '''
+<script type="module">
+import init, {run} from '{base}{js}';
+await init('{base}{wasm}');
+run();
+</script>
+'''
