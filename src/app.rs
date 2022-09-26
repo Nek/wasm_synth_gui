@@ -1,6 +1,6 @@
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 pub struct TemplateApp {
-    stream: Arc<Stream>,
+    stream_action_tx: Sender<StreamAction>,
     // rx_req_sample: Receiver<bool>,
     // tx_sample: Sender<(f64, f64)>,
     net_mtx: Arc<Mutex<Net64>>,
@@ -10,7 +10,7 @@ pub struct TemplateApp {
 use fundsp::hacker::*;
 use fundsp::prelude::Net64;
 use std::sync::mpsc::sync_channel;
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::Sender;
 
 use std::sync::Arc;
 
@@ -23,9 +23,9 @@ use wasm_thread as thread;
 use ringbuf::StaticRb;
 
 use crate::audio;
+use crate::audio::StreamAction;
 #[allow(unused_imports)]
 use cpal::traits::StreamTrait;
-use cpal::Stream;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -60,12 +60,12 @@ impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         const RB_SIZE: usize = 1;
-        let mut sample_buf = StaticRb::<(f64, f64), RB_SIZE>::default();
-        let (mut prod, mut cons) = sample_buf.split();
+        let sample_buf = StaticRb::<(f64, f64), RB_SIZE>::default();
+        let (mut prod, cons) = sample_buf.split();
 
         let (sample_req_tx, sample_req_rx) = sync_channel(1);
 
-        let (stream, sample_rate, sample_resp_tx): (Arc<Stream>, f64, SyncSender<()>) =
+        let (stream_action_tx, sample_rate): (Sender<StreamAction>, f64) =
             audio::init(cons, sample_req_tx);
 
         let net_mtx: Arc<Mutex<Net64>> = Arc::new(Mutex::new(Net64::new(0, 1)));
@@ -85,26 +85,25 @@ impl TemplateApp {
                     sample_req_rx.recv().unwrap();
                     let res = net.get_stereo();
                     prod.push(res).unwrap();
-                    sample_resp_tx.send(()).unwrap();
                 }
             }
         });
 
         #[cfg(not(target_arch = "wasm32"))]
-        stream.pause().unwrap();
+        stream_action_tx.send(StreamAction::Pause).unwrap();
 
         #[cfg(target_arch = "wasm32")]
         {
-            let s = stream.clone();
+            let s = stream_action_tx.clone();
             let f = move || {
-                s.pause().unwrap();
+                s.send(StreamAction::Pause).unwrap();
             };
             let cb = Closure::once(f);
             unlockAudioContext(&cb);
             cb.forget()
         }
         TemplateApp {
-            stream,
+            stream_action_tx,
             is_playing: false,
             net_mtx,
             // net,
@@ -140,9 +139,9 @@ impl eframe::App for TemplateApp {
 
             if ui.add_enabled(true, egui::Button::new("Beep")).clicked() {
                 if self.is_playing {
-                    self.stream.pause().unwrap();
+                    self.stream_action_tx.send(StreamAction::Pause).unwrap();
                 } else {
-                    self.stream.play().unwrap();
+                    self.stream_action_tx.send(StreamAction::Play).unwrap();
                 }
                 self.is_playing = !self.is_playing;
             };
