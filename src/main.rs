@@ -2,6 +2,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 #[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
 mod wasm {
     use crate::main;
     use wasm_bindgen::prelude::*;
@@ -37,9 +40,6 @@ fn main() {
     // Make sure panics are logged using `console.error`.
     console_error_panic_hook::set_once();
 
-    // Redirect tracing to console.log and friends:
-    // tracing_wasm::set_as_global_default();
-
     let web_options = eframe::WebOptions::default();
     eframe::start_web(
         "canv",
@@ -47,4 +47,7 @@ fn main() {
         Box::new(|cc| Box::new(wasm_synth_gui::TemplateApp::new(cc))),
     )
     .expect("failed to start eframe");
+
+    // Redirect tracing to console.log and friends:
+    tracing_wasm::set_as_global_default();
 }

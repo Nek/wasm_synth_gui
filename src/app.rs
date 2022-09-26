@@ -1,6 +1,6 @@
 /// We derive Deserialize/Serialize so we can persist app state on shutdown.
 pub struct TemplateApp {
-    stream_action_tx: Sender<StreamAction>,
+    stream: Arc<Stream>,
     // rx_req_sample: Receiver<bool>,
     // tx_sample: Sender<(f64, f64)>,
     net_mtx: Arc<Mutex<Net64>>,
@@ -9,8 +9,6 @@ pub struct TemplateApp {
 
 use fundsp::hacker::*;
 use fundsp::prelude::Net64;
-use std::sync::mpsc::sync_channel;
-use std::sync::mpsc::Sender;
 
 use std::sync::Arc;
 
@@ -23,25 +21,12 @@ use wasm_thread as thread;
 use ringbuf::StaticRb;
 
 use crate::audio;
-use crate::audio::StreamAction;
 #[allow(unused_imports)]
 use cpal::traits::StreamTrait;
+use cpal::Stream;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(inline_js = " \
-    export function unlockAudioContext(cb) { \
-    const b = document.body; \
-    const events = [\"click\", \"touchstart\", \"touchend\", \"mousedown\", \"keydown\"]; \
-    events.forEach(e => b.addEventListener(e, unlock, false)); \
-    function unlock() {cb(); clean();} \
-    function clean() {events.forEach(e => b.removeEventListener(e, unlock));} \
-}")]
-extern "C" {
-    fn unlockAudioContext(closure: &Closure<dyn FnMut()>);
-}
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -56,57 +41,72 @@ extern "C" {
 //     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
 // }
 
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(inline_js = " \
+    export function unlockAudioContext(cb) { \
+    const b = document.body; \
+    const events = [\"click\", \"touchstart\", \"touchend\", \"mousedown\", \"keydown\"]; \
+    events.forEach(e => b.addEventListener(e, unlock, false)); \
+    function unlock() {cb(); clean();} \
+    function clean() {events.forEach(e => b.removeEventListener(e, unlock));} \
+}")]
+extern "C" {
+    fn unlockAudioContext(closure: &Closure<dyn FnMut()>);
+}
+
 impl TemplateApp {
     /// Called once before the first frame.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        const RB_SIZE: usize = 1;
-        let sample_buf = StaticRb::<(f64, f64), RB_SIZE>::default();
+        const BUFFER_SIZE: usize = 256;
+        const SAMPLE_RATE: u32 = 44100;
+        let sample_buf = StaticRb::<(f64, f64), { BUFFER_SIZE }>::default();
         let (mut prod, cons) = sample_buf.split();
 
-        let (sample_req_tx, sample_req_rx) = sync_channel(1);
+        let stream: Arc<Stream> = audio::init(cons, SAMPLE_RATE);
 
-        let (stream_action_tx, sample_rate): (Sender<StreamAction>, f64) =
-            audio::init(cons, sample_req_tx);
+        // stream.play().unwrap();
 
         let net_mtx: Arc<Mutex<Net64>> = Arc::new(Mutex::new(Net64::new(0, 1)));
 
         let net_mtx2 = net_mtx.clone();
-
         let _net_thread = thread::spawn(move || {
             if let Ok(mut net) = net_mtx2.lock() {
                 let dc_id = net.push(Box::new(dc(220.0)));
                 let sine_id = net.push(Box::new(sine()));
                 net.pipe(dc_id, sine_id);
                 net.pipe_output(sine_id);
+                net.reset(Some(SAMPLE_RATE.into()));
 
-                net.reset(Some(sample_rate));
+                // let cycle = (BUFFER_SIZE as u32) * 60000 / SAMPLE_RATE;
 
                 loop {
-                    sample_req_rx.recv().unwrap();
-                    let res = net.get_stereo();
-                    prod.push(res).unwrap();
+                    while prod.len() < BUFFER_SIZE {
+                        let res = net.get_stereo();
+                        prod.push(res).unwrap();
+                    }
                 }
             }
         });
 
-        #[cfg(not(target_arch = "wasm32"))]
-        stream_action_tx.send(StreamAction::Pause).unwrap();
+        // #[cfg(target_arch = "wasm32")]
+        // {
+        //     let s = stream.clone();
+        //     let f = move || {
+        //         println!("let's play and pause");
+        //         s.play().unwrap();
+        //         s.pause().unwrap();
+        //         println!("unlock done");
+        //     };
+        //     let cb = Closure::once(f);
+        //     unlockAudioContext(&cb);
+        //     println!("start unlock");
+        //     cb.forget();
+        // }
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            let s = stream_action_tx.clone();
-            let f = move || {
-                s.send(StreamAction::Pause).unwrap();
-            };
-            let cb = Closure::once(f);
-            unlockAudioContext(&cb);
-            cb.forget()
-        }
         TemplateApp {
-            stream_action_tx,
+            stream,
             is_playing: false,
             net_mtx,
-            // net,
         }
     }
 }
@@ -139,9 +139,9 @@ impl eframe::App for TemplateApp {
 
             if ui.add_enabled(true, egui::Button::new("Beep")).clicked() {
                 if self.is_playing {
-                    self.stream_action_tx.send(StreamAction::Pause).unwrap();
+                    self.stream.pause().unwrap();
                 } else {
-                    self.stream_action_tx.send(StreamAction::Play).unwrap();
+                    self.stream.play().unwrap();
                 }
                 self.is_playing = !self.is_playing;
             };
