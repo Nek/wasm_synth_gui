@@ -14,12 +14,17 @@ use std::sync::Arc;
 use std::sync::Mutex;
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_thread::JoinHandle;
+
 #[cfg(target_arch = "wasm32")]
 use wasm_thread as thread;
 
 use ringbuf::StaticRb;
 
 use crate::audio::AudioOutput;
+use crate::audio::AudioOutputState;
 
 #[allow(unused_imports)]
 use cpal::traits::StreamTrait;
@@ -33,12 +38,6 @@ extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
 }
-// #[cfg(target_arch = "wasm32")]
-// macro_rules! console_log {
-//     // Note that this is using the `log` function imported above during
-//     // `bare_bones`
-//     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-// }
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(inline_js = " \
@@ -128,8 +127,6 @@ impl TemplateApp {
 }
 
 impl eframe::App for TemplateApp {
-    /// Called each time the UI needs repainting, which may be many times per second.
-    /// Put your widgets into a `SidePanel`, `TopPanel`, `CentralPanel`, `Window` or `Area`.
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
@@ -145,12 +142,12 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Audio Panel");
-            if ui.button("Start DSP loop.").clicked() {
+            if ui.button("Start DSP Loop").clicked() {
                 let net_mtx = self.net_mtx.clone();
                 let sample_producer_mtx = self.sample_producer_mtx.clone();
                 let event_consumer_mtx = self.event_consumer_mtx.clone();
-                let _update_net_thread = thread::spawn(move || {
-                    let mut producer = sample_producer_mtx
+                thread::spawn(move || {
+                    let mut sample_producer = sample_producer_mtx
                         .lock()
                         .expect("Can't lock sample_producer.");
 
@@ -160,10 +157,10 @@ impl eframe::App for TemplateApp {
 
                     loop {
                         if event_consumer.is_empty() {
-                            while producer.len() < BUFFER_SIZE {
+                            while sample_producer.len() < BUFFER_SIZE {
                                 let res = net_mtx.lock().expect("Can't lock Net64.").get_stereo();
                                 if res != (0.0, 0.0) {
-                                    producer.push(res).unwrap();
+                                    sample_producer.push(res).unwrap();
                                 }
                             }
                         }
@@ -171,34 +168,24 @@ impl eframe::App for TemplateApp {
                 });
             }
 
-            if ui.button("Play").clicked() {
-                let audio_output_mtx = self.audio_output_mtx.clone();
-                audio_output_mtx
-                    .lock()
-                    .expect("Can't lock AudioOutput.")
-                    .play();
-                drop(audio_output_mtx);
-            }
-
-            if ui.button("Pause").clicked() {
-                let audio_output_mtx = self.audio_output_mtx.clone();
-                audio_output_mtx
-                    .lock()
-                    .expect("Can't lock AudioOutput.")
-                    .pause();
-                drop(audio_output_mtx);
-            }
-
-            if ui.button("Setup synth 1").clicked() {
+            if ui.button("Setup Synth").clicked() {
                 let net_mtx = self.net_mtx.clone();
-                let _update_net_thread = thread::spawn(move || {
+                thread::spawn(move || {
                     let mut net = net_mtx.lock().expect("Can't lock Net64.");
                     let dc_id = net.push(Box::new(dc(220.0)));
                     let sine_id = net.push(Box::new(sine()));
                     net.pipe(dc_id, sine_id);
                     net.pipe_output(sine_id);
                     net.reset(Some(SAMPLE_RATE.into()));
+                    drop(net);
+                    drop(net_mtx);
                 });
+
+                let audio_output_mtx = self.audio_output_mtx.clone();
+                let mut audio_output = audio_output_mtx.lock().expect("Can't lock AudioOutput.");
+                audio_output.play();
+
+                drop(audio_output);
             };
         });
 

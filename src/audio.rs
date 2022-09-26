@@ -104,7 +104,17 @@ impl AudioOutput {
                     }
                 };
 
-                self.state = AudioOutputState::Ready;
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    stream.pause().expect("Can't pause native stream on start.");
+                    self.state = AudioOutputState::Paused;
+                }
+
+                #[cfg(target_arch = "wasm32")]
+                {
+                    self.state = AudioOutputState::Ready;
+                }
+
                 self.config = Some(config.clone());
                 self.stream = Some(Arc::new(stream));
 
@@ -142,8 +152,6 @@ where
                 for frame in output.chunks_mut(channels) {
                     if !sample_cons.is_empty() {
                         if let Some(current_sample) = sample_cons.pop() {
-                            // println!("{} {}", current_sample.0, current_sample.1);
-
                             let left: T = cpal::Sample::from::<f32>(&(current_sample.0 as f32));
                             let right: T = cpal::Sample::from::<f32>(&(current_sample.1 as f32));
 
@@ -161,9 +169,6 @@ where
             err_fn,
         )
         .expect("Can't build output Stream");
-
-    #[cfg(not(target_arch = "wasm32"))]
-    stream.pause().expect("Can't pause audio Stream.");
 
     stream
 }

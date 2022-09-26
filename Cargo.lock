@@ -2239,6 +2239,7 @@ dependencies = [
  "eframe",
  "egui",
  "fundsp",
+ "futures",
  "ringbuf",
  "serde",
  "tracing-subscriber",

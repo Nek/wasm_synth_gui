@@ -14,6 +14,7 @@ serde = { version = "1", features = ["derive"] } # You only need this if you wan
 cpal = {git = "https://github.com/Nek/cpal", features = ["wasm-bindgen"] }
 fundsp = "0.9.0"
 ringbuf = "0.3.0-rc.0"
+futures = "0.3.24"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
