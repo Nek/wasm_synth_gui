@@ -413,6 +413,7 @@ dependencies = [
 [[package]]
 name = "cpal"
 version = "0.14.0"
+source = "git+https://github.com/Nek/cpal#4a5ef95a95482317941e31249468dcfb936470ff"
 dependencies = [
  "alsa",
  "core-foundation-sys",

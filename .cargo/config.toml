@@ -1,8 +1,8 @@
 [target.wasm32-unknown-unknown]
-rustflags = ["-Z", "unstable-options", "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals"] #, "-C", "link-arg=--max-memory=4294967296"
+rustflags = ["-C", "target-feature=+atomics,+bulk-memory,+mutable-globals"] #, "-C", "link-arg=--max-memory=4294967296"
 
 [target.x86_64-apple-darwin]
-rustflags = [] #, "-C", "link-arg=--max-memory=4294967296"
+rustflags = []
 
 [build]
 target = "x86_64-apple-darwin"
