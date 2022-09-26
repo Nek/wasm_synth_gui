@@ -4,13 +4,13 @@ use cpal::StreamConfig;
 
 use fundsp::hacker::*;
 use fundsp::prelude::Net64;
+use ringbuf::Consumer;
 use ringbuf::Producer;
 use ringbuf::SharedRb;
 
 use std::mem::MaybeUninit;
 use std::sync::Arc;
 
-use std::sync::mpsc::channel;
 use std::sync::Mutex;
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
@@ -20,7 +20,7 @@ use wasm_thread as thread;
 use ringbuf::StaticRb;
 
 use crate::audio::AudioOutput;
-use crate::audio::AudioOutputState;
+
 #[allow(unused_imports)]
 use cpal::traits::StreamTrait;
 
@@ -56,6 +56,8 @@ extern "C" {
 const BUFFER_SIZE: usize = 256;
 const SAMPLE_RATE: u32 = 44100;
 
+type Event = ();
+
 pub struct TemplateApp {
     audio_output_mtx: Arc<Mutex<AudioOutput>>,
     net_mtx: Arc<Mutex<Net64>>,
@@ -64,10 +66,11 @@ pub struct TemplateApp {
             Producer<(f64, f64), Arc<SharedRb<(f64, f64), [MaybeUninit<(f64, f64)>; BUFFER_SIZE]>>>,
         >,
     >,
+    event_producer_mtx: Arc<Mutex<Producer<Event, Arc<SharedRb<Event, [MaybeUninit<Event>; 1]>>>>>,
+    event_consumer_mtx: Arc<Mutex<Consumer<Event, Arc<SharedRb<Event, [MaybeUninit<Event>; 1]>>>>>,
 }
 
 impl TemplateApp {
-    /// Called once before the first frame.
     pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let audio_output_mtx: Arc<Mutex<AudioOutput>> =
             AudioOutput::new().expect("Can't create AudioOutput.");
@@ -82,10 +85,10 @@ impl TemplateApp {
         stream_config.sample_rate = SampleRate(SAMPLE_RATE);
 
         let samples_ringbuf = StaticRb::<(f64, f64), { BUFFER_SIZE }>::default();
-        let (producer, consumer) = samples_ringbuf.split();
+        let (samples_producer, samples_consumer) = samples_ringbuf.split();
 
         let ready_audio_output_mtx: Arc<Mutex<AudioOutput>> = audio_output_config
-            .setup::<BUFFER_SIZE>(stream_config, consumer)
+            .setup::<BUFFER_SIZE>(stream_config, samples_consumer)
             .expect("Can't setup AudioOutput.");
 
         #[cfg(target_arch = "wasm32")]
@@ -110,12 +113,16 @@ impl TemplateApp {
         }
 
         let net_mtx: Arc<Mutex<Net64>> = Arc::new(Mutex::new(Net64::new(0, 1)));
-        let sample_producer_mtx = Arc::new(Mutex::new(producer));
+        let sample_producer_mtx = Arc::new(Mutex::new(samples_producer));
+
+        let (event_producer, event_consumer) = StaticRb::<Event, 1>::default().split();
 
         TemplateApp {
             audio_output_mtx: ready_audio_output_mtx,
             sample_producer_mtx,
             net_mtx,
+            event_producer_mtx: Arc::new(Mutex::new(event_producer)),
+            event_consumer_mtx: Arc::new(Mutex::new(event_consumer)),
         }
     }
 }
@@ -138,23 +145,26 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Audio Panel");
-
             if ui.button("Start DSP loop.").clicked() {
                 let net_mtx = self.net_mtx.clone();
-                let producer_mtx = self.sample_producer_mtx.clone();
+                let sample_producer_mtx = self.sample_producer_mtx.clone();
+                let event_consumer_mtx = self.event_consumer_mtx.clone();
                 let _update_net_thread = thread::spawn(move || {
-                    let mut net = net_mtx.lock().expect("Can't lock Net64.");
+                    let mut producer = sample_producer_mtx
+                        .lock()
+                        .expect("Can't lock sample_producer.");
 
-                    println!("lock net");
+                    let event_consumer = event_consumer_mtx
+                        .lock()
+                        .expect("Can't lock event consumer.");
 
-                    println!("len() {}", producer_mtx.lock().unwrap().len());
-
-                    let mut producer = producer_mtx.lock().expect("Can't lock sample_producer.");
                     loop {
-                        while producer.len() < BUFFER_SIZE {
-                            let res = net.get_stereo();
-                            if res != (0.0, 0.0) {
-                                producer.push(res).unwrap();
+                        if event_consumer.is_empty() {
+                            while producer.len() < BUFFER_SIZE {
+                                let res = net_mtx.lock().expect("Can't lock Net64.").get_stereo();
+                                if res != (0.0, 0.0) {
+                                    producer.push(res).unwrap();
+                                }
                             }
                         }
                     }
@@ -167,6 +177,7 @@ impl eframe::App for TemplateApp {
                     .lock()
                     .expect("Can't lock AudioOutput.")
                     .play();
+                drop(audio_output_mtx);
             }
 
             if ui.button("Pause").clicked() {
@@ -175,6 +186,7 @@ impl eframe::App for TemplateApp {
                     .lock()
                     .expect("Can't lock AudioOutput.")
                     .pause();
+                drop(audio_output_mtx);
             }
 
             if ui.button("Setup synth 1").clicked() {
@@ -183,7 +195,6 @@ impl eframe::App for TemplateApp {
                     let mut net = net_mtx.lock().expect("Can't lock Net64.");
                     let dc_id = net.push(Box::new(dc(220.0)));
                     let sine_id = net.push(Box::new(sine()));
-                    // Connect nodes.
                     net.pipe(dc_id, sine_id);
                     net.pipe_output(sine_id);
                     net.reset(Some(SAMPLE_RATE.into()));

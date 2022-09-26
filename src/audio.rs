@@ -53,24 +53,24 @@ impl AudioOutput {
             AudioOutputState::Init => (),
             AudioOutputState::Playing => (),
             _ => {
+                self.state = AudioOutputState::Playing;
                 self.stream
                     .as_mut()
                     .expect("Audio Stream is missing.")
                     .play()
                     .expect("Can't play audio Stream.");
-                self.state = AudioOutputState::Playing;
             }
         }
     }
     pub fn pause(&mut self) {
         match self.state {
             AudioOutputState::Playing => {
+                self.state = AudioOutputState::Paused;
                 self.stream
                     .as_mut()
                     .expect("Audio Stream is missing.")
                     .pause()
                     .expect("Can't pause audio Stream.");
-                self.state = AudioOutputState::Paused;
             }
             _ => (),
         }
