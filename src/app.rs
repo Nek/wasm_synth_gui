@@ -59,16 +59,11 @@ const SAMPLE_RATE: u32 = 44100;
 pub struct TemplateApp {
     audio_output_mtx: Arc<Mutex<AudioOutput>>,
     net_mtx: Arc<Mutex<Net64>>,
-    sample_producer: Arc<
+    sample_producer_mtx: Arc<
         Mutex<
             Producer<(f64, f64), Arc<SharedRb<(f64, f64), [MaybeUninit<(f64, f64)>; BUFFER_SIZE]>>>,
         >,
     >,
-}
-
-enum NetCommand {
-    Hold,
-    Resume,
 }
 
 impl TemplateApp {
@@ -77,17 +72,19 @@ impl TemplateApp {
         let audio_output_mtx: Arc<Mutex<AudioOutput>> =
             AudioOutput::new().expect("Can't create AudioOutput.");
 
-        let binding = audio_output_mtx.clone();
-        let mut audio_output = binding.lock().expect("Can't lock AudioOutput.");
+        let audio_output_config_mtx = audio_output_mtx.clone();
+        let mut audio_output_config = audio_output_config_mtx
+            .lock()
+            .expect("Can't lock AudioOutput.");
 
-        let stream_config: &mut StreamConfig = &mut audio_output.supported_config.config();
+        let stream_config: &mut StreamConfig = &mut audio_output_config.supported_config.config();
         stream_config.buffer_size = BufferSize::Fixed(BUFFER_SIZE as u32);
         stream_config.sample_rate = SampleRate(SAMPLE_RATE);
 
         let samples_ringbuf = StaticRb::<(f64, f64), { BUFFER_SIZE }>::default();
         let (producer, consumer) = samples_ringbuf.split();
 
-        let ready_audio_output_mtx: Arc<Mutex<AudioOutput>> = audio_output
+        let ready_audio_output_mtx: Arc<Mutex<AudioOutput>> = audio_output_config
             .setup::<BUFFER_SIZE>(stream_config, consumer)
             .expect("Can't setup AudioOutput.");
 
@@ -113,32 +110,12 @@ impl TemplateApp {
         }
 
         let net_mtx: Arc<Mutex<Net64>> = Arc::new(Mutex::new(Net64::new(0, 1)));
-        let producer_mtx = Arc::new(Mutex::new(producer));
-
-        let compute_net_mtx = net_mtx.clone();
-        let compute_producer_mtx = producer_mtx.clone();
-        let (tx, rx) = channel::<NetCommand>();
-
-        let _compute_net_send_samples_thread = thread::spawn(move || {
-            let mut net = compute_net_mtx.lock().expect("Can't lock Net64.");
-            let mut producer = compute_producer_mtx
-                .lock()
-                .expect("Can't lock sample_producer.");
-
-            loop {
-                while producer.len() < BUFFER_SIZE {
-                    let res = net.get_stereo();
-                    // if res != (0.0, 0.0) {
-                    producer.push(res).unwrap();
-                    // }
-                }
-            }
-        });
+        let sample_producer_mtx = Arc::new(Mutex::new(producer));
 
         TemplateApp {
             audio_output_mtx: ready_audio_output_mtx,
+            sample_producer_mtx,
             net_mtx,
-            sample_producer: producer_mtx,
         }
     }
 }
@@ -162,76 +139,55 @@ impl eframe::App for TemplateApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Audio Panel");
 
-            if ui.add_enabled(true, egui::Button::new("Beep")).clicked() {
+            if ui.button("Start DSP loop.").clicked() {
                 let net_mtx = self.net_mtx.clone();
-                // let producer_mtx = self.sample_producer.clone();
-                let producer_mtx = self.sample_producer.clone();
+                let producer_mtx = self.sample_producer_mtx.clone();
                 let _update_net_thread = thread::spawn(move || {
-                    println!("lock net");
-
                     let mut net = net_mtx.lock().expect("Can't lock Net64.");
-                    // let c = dc(220.0) >> square();
 
-                    // let pulse_id = net.push(Box::new(c));
-
-                    let dc_id = net.push(Box::new(dc(220.0)));
-                    let sine_id = net.push(Box::new(sine()));
-                    // Connect nodes.
-                    net.pipe(dc_id, sine_id);
-                    net.pipe_output(sine_id);
-
-                    // net.pipe_output(pulse_id);
-
-                    net.reset(Some(SAMPLE_RATE.into()));
+                    println!("lock net");
 
                     println!("len() {}", producer_mtx.lock().unwrap().len());
 
-                    // let mut producer = producer_mtx.lock().expect("Can't lock sample_producer.");
-                    // loop {
-                    //     while producer.len() < BUFFER_SIZE {
-                    //         let res = net.get_stereo();
-                    //         if res != (0.0, 0.0) {
-                    //             producer.push(res).unwrap();
-                    //         }
-                    //     }
-                    // }
-
-                    // let cycle = (BUFFER_SIZE as u32) * 60000 / SAMPLE_RATE;
-
-                    // loop {
-                    //     while prod.len() < BUFFER_SIZE {
-                    //         let res = net.get_stereo();
-                    //         prod.push(res).unwrap();
-                    //     }
-                    // }
-                    drop(net);
+                    let mut producer = producer_mtx.lock().expect("Can't lock sample_producer.");
+                    loop {
+                        while producer.len() < BUFFER_SIZE {
+                            let res = net.get_stereo();
+                            if res != (0.0, 0.0) {
+                                producer.push(res).unwrap();
+                            }
+                        }
+                    }
                 });
+            }
+
+            if ui.button("Play").clicked() {
                 let audio_output_mtx = self.audio_output_mtx.clone();
                 audio_output_mtx
                     .lock()
                     .expect("Can't lock AudioOutput.")
                     .play();
-                drop(audio_output_mtx);
-                // let mut audio_output = self
-                //     .audio_output_mtx
-                //     .lock()
-                //     .expect("Can't pull AudioOutput out of Mutex.");
-                // println!(
-                //     "{}",
-                //     match audio_output.state {
-                //         AudioOutputState::Init => "AudioOutputState::Init",
-                //         AudioOutputState::Ready => "AudioOutputState::Ready",
-                //         AudioOutputState::Playing => "AudioOutputState::Playing",
-                //         AudioOutputState::Paused => "AudioOutputState::Paused",
-                //     }
-                // );
-                // audio_output.play();
-                // match audio_output.state {
-                //     AudioOutputState::Init => (),
-                //     AudioOutputState::Ready => audio_output.play(),
-                //     AudioOutputState::Playing => audio_output.pause(),
-                //     AudioOutputState::Paused => audio_output.play(),
-                // }
+            }
+
+            if ui.button("Pause").clicked() {
+                let audio_output_mtx = self.audio_output_mtx.clone();
+                audio_output_mtx
+                    .lock()
+                    .expect("Can't lock AudioOutput.")
+                    .pause();
+            }
+
+            if ui.button("Setup synth 1").clicked() {
+                let net_mtx = self.net_mtx.clone();
+                let _update_net_thread = thread::spawn(move || {
+                    let mut net = net_mtx.lock().expect("Can't lock Net64.");
+                    let dc_id = net.push(Box::new(dc(220.0)));
+                    let sine_id = net.push(Box::new(sine()));
+                    // Connect nodes.
+                    net.pipe(dc_id, sine_id);
+                    net.pipe_output(sine_id);
+                    net.reset(Some(SAMPLE_RATE.into()));
+                });
             };
         });
 
