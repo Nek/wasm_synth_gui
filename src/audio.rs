@@ -51,6 +51,7 @@ impl AudioOutput {
     pub fn play(&mut self) {
         match self.state {
             AudioOutputState::Init => (),
+            AudioOutputState::Playing => (),
             _ => {
                 self.stream
                     .as_mut()
@@ -141,6 +142,8 @@ where
                 for frame in output.chunks_mut(channels) {
                     if !sample_cons.is_empty() {
                         if let Some(current_sample) = sample_cons.pop() {
+                            // println!("{} {}", current_sample.0, current_sample.1);
+
                             let left: T = cpal::Sample::from::<f32>(&(current_sample.0 as f32));
                             let right: T = cpal::Sample::from::<f32>(&(current_sample.1 as f32));
 
