@@ -132,7 +132,7 @@ impl eframe::App for TemplateApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Audio Panel");
-            if ui.button("Start DSP Loop").clicked() {
+            if ui.button("Start DSP").clicked() {
                 let net_mtx = self.net_mtx.clone();
                 let sample_producer_mtx = self.sample_producer_mtx.clone();
                 let event_consumer_mtx = self.event_consumer_mtx.clone();
@@ -161,7 +161,7 @@ impl eframe::App for TemplateApp {
                 });
             }
 
-            if ui.button("Setup Synth 1").clicked() {
+            if ui.button("Start Synth 1").clicked() {
                 let net_mtx = self.net_mtx.clone();
                 thread::spawn(move || {
                     let mut net = net_mtx.lock().expect("Can't lock Net64.");
@@ -169,7 +169,7 @@ impl eframe::App for TemplateApp {
                     let sine_id = net.push(Box::new(sine()));
                     net.pipe(dc_id, sine_id);
                     net.pipe_output(sine_id);
-                    // net.reset(Some(SAMPLE_RATE.into()));
+
                     drop(net);
                     drop(net_mtx);
                 });
@@ -177,34 +177,25 @@ impl eframe::App for TemplateApp {
                 let audio_output_mtx = self.audio_output_mtx.clone();
                 let mut audio_output = audio_output_mtx.lock().expect("Can't lock AudioOutput.");
                 audio_output.play();
-                // drop(audio_output);
             };
 
-            if ui.button("Setup Synth 2").clicked() {
+            if ui.button("Start Synth 2").clicked() {
                 let net_mtx = self.net_mtx.clone();
                 thread::spawn(move || {
                     let mut net = net_mtx.lock().expect("Can't lock Net64.");
 
-                    let c = zero() >> pluck(220.0, 0.8, 0.8);
-                    let c = dc(110.0) >> dsf_saw_r(0.99);
-                    let c = dc(110.0) >> triangle();
-                    let c = lfo(|t| xerp11(20.0, 2000.0, sin_hz(0.1, t)))
-                        >> dsf_square_r(0.99)
-                        >> lowpole_hz(1000.0);
-                    let c = dc(110.0) >> square();
+                    let c = lfo(|t| {
+                        let pitch = 110.0;
+                        let duty = lerp11(0.01, 0.99, sin_hz(0.05, t));
+                        (pitch, duty)
+                    }) >> pulse();
 
                     let c_id = net.push(Box::new(c));
                     net.pipe_output(c_id);
-                    // net.reset(Some(SAMPLE_RATE.into()));
+
                     drop(net);
                     drop(net_mtx);
                 });
-
-                let audio_output_mtx = self.audio_output_mtx.clone();
-                let mut audio_output = audio_output_mtx.lock().expect("Can't lock AudioOutput.");
-                audio_output.play();
-
-                // drop(audio_output);
             };
         });
 
