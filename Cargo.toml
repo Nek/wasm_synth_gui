@@ -5,8 +5,6 @@ authors = ["Nikita Dudnik <nikdudnik@gmail.com>"]
 edition = "2021"
 rust-version = "1.66"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 egui = "0.19.0"
 eframe = { version = "0.19.0", features = ["persistence"] }
@@ -14,10 +12,6 @@ cpal = {git = "https://github.com/Nek/cpal", features = ["wasm-bindgen"] }
 fundsp = "0.9.0"
 ringbuf = "0.3.0-rc.0"
 wasm_thread = {version = "0.2.0", features = ["es_modules"]}
-stdweb = "0.4.20"
-# wasm-bindgen-futures = {version = "0.4.33", features = ["futures-core-03-stream", "futures-core"]}
-# wasm-futures-executor = "0.2.0"
-# futures-executor = "0.3.24"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -31,18 +25,5 @@ web-sys = {version = "0.3.60", features = ["Window", "Document", "Event", "AddEv
 wasm-bindgen = "0.2.83"
 
 [profile.release]
-opt-level = "z" # fast and small wasm
-# target = "wasm32-unknown-unknown"
-# strip = true
-# lto = true
-# panic = "abort"
-
-# [patch.crates-io]
-
-# If you want to use the bleeding edge version of egui and eframe:
-# egui = { git = "https://github.com/emilk/egui", branch = "master" }
-# eframe = { git = "https://github.com/emilk/egui", branch = "master" }
-
-# If you fork https://github.com/emilk/egui you can test with:
-# egui = { path = "../egui/crates/egui" }
-# eframe = { path = "../egui/crates/eframe" }
+opt-level = "z"
+lto = true
