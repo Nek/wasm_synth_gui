@@ -12,6 +12,7 @@ cpal = {git = "https://github.com/Nek/cpal", features = ["wasm-bindgen"] }
 fundsp = "0.9.0"
 ringbuf = "0.3.0-rc.0"
 wasm_thread = {version = "0.2.0", features = ["es_modules"]}
+glicol_synth = "0.12.8"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

@@ -2,8 +2,6 @@ use cpal::BufferSize;
 use cpal::SampleRate;
 use cpal::StreamConfig;
 
-use fundsp::hacker::*;
-use fundsp::prelude::Net64;
 use ringbuf::Consumer;
 use ringbuf::Producer;
 use ringbuf::SharedRb;
@@ -25,6 +23,8 @@ use wasm_bindgen::prelude::*;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_thread as thread;
+
+use glicol_synth::{operator::Mul, oscillator::SinOsc, AudioContext, AudioContextBuilder};
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread;
@@ -56,7 +56,7 @@ type Event = ();
 
 pub struct TemplateApp {
     audio_output_mtx: Arc<Mutex<AudioOutput>>,
-    net_mtx: Arc<Mutex<Net64>>,
+    net_mtx: Arc<Mutex<AudioContext<1>>>,
     sample_producer_mtx: Arc<
         Mutex<
             Producer<(f64, f64), Arc<SharedRb<(f64, f64), [MaybeUninit<(f64, f64)>; BUFFER_SIZE]>>>,
@@ -101,7 +101,12 @@ impl TemplateApp {
             cb.forget();
         }
 
-        let net_mtx: Arc<Mutex<Net64>> = Arc::new(Mutex::new(Net64::new(0, 1)));
+        let net_mtx: Arc<Mutex<AudioContext<1>>> = Arc::new(Mutex::new(
+            AudioContextBuilder::<1>::new()
+                .sr(44100)
+                .channels(2)
+                .build(),
+        ));
         let sample_producer_mtx = Arc::new(Mutex::new(samples_producer));
 
         let (event_producer, event_consumer) = StaticRb::<Event, 1>::default().split();
@@ -144,17 +149,16 @@ impl eframe::App for TemplateApp {
                     let event_consumer = event_consumer_mtx
                         .lock()
                         .expect("Can't lock event consumer.");
-                    net_mtx
-                        .lock()
-                        .expect("Can't lock Net64.")
-                        .reset(Some(SAMPLE_RATE.into()));
                     loop {
                         if event_consumer.is_empty() {
                             while sample_producer.len() < BUFFER_SIZE {
-                                let res = net_mtx.lock().expect("Can't lock Net64.").get_stereo();
-                                if res != (0.0, 0.0) {
-                                    sample_producer.push(res).unwrap();
-                                }
+                                let mut n = net_mtx.lock().expect("Can't lock Net64.");
+                                let res = n.next_block();
+                                // if res != (0.0, 0.0) {
+                                sample_producer
+                                    .push((res[0][0] as f64, res[1][0] as f64))
+                                    .unwrap();
+                                // }
                             }
                         }
                     }
@@ -162,45 +166,19 @@ impl eframe::App for TemplateApp {
             }
 
             if ui.button("Start Synth 1").clicked() {
-                let net_mtx = self.net_mtx.clone();
-                thread::spawn(move || {
-                    let mut net = net_mtx.lock().expect("Can't lock Net64.");
-                    let dc_id = net.push(Box::new(dc(220.0)));
-                    let sine_id = net.push(Box::new(sine()));
-                    net.pipe(dc_id, sine_id);
-                    net.pipe_output(sine_id);
+                let context_mtx = self.net_mtx.clone();
 
-                    drop(net);
-                    drop(net_mtx);
-                });
+                let mut context = context_mtx.lock().expect("Can't lock AudioContext.");
+                let node_a = context.add_mono_node(SinOsc::new().freq(440.0));
+                let node_b = context.add_stereo_node(Mul::new(0.1));
+                context.connect(node_a, node_b);
+                let dest = context.destination;
+                context.connect(node_b, dest);
 
                 let audio_output_mtx = self.audio_output_mtx.clone();
                 let mut audio_output = audio_output_mtx.lock().expect("Can't lock AudioOutput.");
                 audio_output.play();
             };
-
-            if ui.button("Start Synth 2").clicked() {
-                let net_mtx = self.net_mtx.clone();
-                thread::spawn(move || {
-                    let mut net = net_mtx.lock().expect("Can't lock Net64.");
-
-                    let c = lfo(|t| {
-                        let pitch = 110.0;
-                        let duty = lerp11(0.01, 0.99, sin_hz(0.05, t));
-                        (pitch, duty)
-                    }) >> pulse();
-
-                    let c_id = net.push(Box::new(c));
-                    net.pipe_output(c_id);
-
-                    drop(net);
-                    drop(net_mtx);
-                });
-            };
-
-            let mut pitch: f64 = 0.0;
-
-            ui.add(egui::Slider::new(&mut pitch, 0.0..=100.0).text("My value"));
         });
 
         if false {
