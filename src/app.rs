@@ -197,6 +197,10 @@ impl eframe::App for TemplateApp {
                     drop(net_mtx);
                 });
             };
+
+            let mut pitch: f64 = 0.0;
+
+            ui.add(egui::Slider::new(&mut pitch, 0.0..=100.0).text("My value"));
         });
 
         if false {
