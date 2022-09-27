@@ -2244,7 +2244,6 @@ dependencies = [
  "tracing-wasm",
  "wasm-bindgen",
  "wasm_thread",
- "web-sys",
 ]
 
 [[package]]
