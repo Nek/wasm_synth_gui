@@ -12,25 +12,22 @@ use std::mem::MaybeUninit;
 use std::sync::Arc;
 
 use std::sync::Mutex;
-#[cfg(not(target_arch = "wasm32"))]
-use std::thread;
-
-#[cfg(target_arch = "wasm32")]
-use wasm_thread::JoinHandle;
-
-#[cfg(target_arch = "wasm32")]
-use wasm_thread as thread;
 
 use ringbuf::StaticRb;
 
 use crate::audio::AudioOutput;
-use crate::audio::AudioOutputState;
 
 #[allow(unused_imports)]
 use cpal::traits::StreamTrait;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_thread as thread;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::thread;
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
@@ -45,7 +42,7 @@ extern "C" {
     const b = document.body; \
     const events = [\"click\", \"touchstart\", \"touchend\", \"mousedown\", \"keydown\"]; \
     events.forEach(e => b.addEventListener(e, unlock, false)); \
-    function unlock() {cb(); clean();} \
+    function unlock() {cb(); clean(); console.log(\"!!!!!!!\")} \
     function clean() {events.forEach(e => b.removeEventListener(e, unlock));} \
 }")]
 extern "C" {
@@ -94,20 +91,13 @@ impl TemplateApp {
         {
             let audio_output_mtx = ready_audio_output_mtx.clone();
             let f = move || {
-                println!("let's play and pause");
                 audio_output_mtx
                     .lock()
                     .expect("Can't lock AudioOutput.")
                     .play();
-                audio_output_mtx
-                    .lock()
-                    .expect("Can't lock AudioOutput.")
-                    .pause();
-                println!("Unlock web audio done");
             };
             let cb = Closure::once(f);
             unlockAudioContext(&cb);
-            println!("Start unlock web audio");
             cb.forget();
         }
 
@@ -154,7 +144,10 @@ impl eframe::App for TemplateApp {
                     let event_consumer = event_consumer_mtx
                         .lock()
                         .expect("Can't lock event consumer.");
-
+                    net_mtx
+                        .lock()
+                        .expect("Can't lock Net64.")
+                        .reset(Some(SAMPLE_RATE.into()));
                     loop {
                         if event_consumer.is_empty() {
                             while sample_producer.len() < BUFFER_SIZE {
@@ -168,7 +161,7 @@ impl eframe::App for TemplateApp {
                 });
             }
 
-            if ui.button("Setup Synth").clicked() {
+            if ui.button("Setup Synth 1").clicked() {
                 let net_mtx = self.net_mtx.clone();
                 thread::spawn(move || {
                     let mut net = net_mtx.lock().expect("Can't lock Net64.");
@@ -176,7 +169,33 @@ impl eframe::App for TemplateApp {
                     let sine_id = net.push(Box::new(sine()));
                     net.pipe(dc_id, sine_id);
                     net.pipe_output(sine_id);
-                    net.reset(Some(SAMPLE_RATE.into()));
+                    // net.reset(Some(SAMPLE_RATE.into()));
+                    drop(net);
+                    drop(net_mtx);
+                });
+
+                let audio_output_mtx = self.audio_output_mtx.clone();
+                let mut audio_output = audio_output_mtx.lock().expect("Can't lock AudioOutput.");
+                audio_output.play();
+                // drop(audio_output);
+            };
+
+            if ui.button("Setup Synth 2").clicked() {
+                let net_mtx = self.net_mtx.clone();
+                thread::spawn(move || {
+                    let mut net = net_mtx.lock().expect("Can't lock Net64.");
+
+                    let c = zero() >> pluck(220.0, 0.8, 0.8);
+                    let c = dc(110.0) >> dsf_saw_r(0.99);
+                    let c = dc(110.0) >> triangle();
+                    let c = lfo(|t| xerp11(20.0, 2000.0, sin_hz(0.1, t)))
+                        >> dsf_square_r(0.99)
+                        >> lowpole_hz(1000.0);
+                    let c = dc(110.0) >> square();
+
+                    let c_id = net.push(Box::new(c));
+                    net.pipe_output(c_id);
+                    // net.reset(Some(SAMPLE_RATE.into()));
                     drop(net);
                     drop(net_mtx);
                 });
@@ -185,7 +204,7 @@ impl eframe::App for TemplateApp {
                 let mut audio_output = audio_output_mtx.lock().expect("Can't lock AudioOutput.");
                 audio_output.play();
 
-                drop(audio_output);
+                // drop(audio_output);
             };
         });
 

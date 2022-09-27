@@ -10,11 +10,14 @@ rust-version = "1.66"
 [dependencies]
 egui = "0.19.0"
 eframe = { version = "0.19.0", features = ["persistence"] }
-serde = { version = "1", features = ["derive"] } # You only need this if you want app persistence
 cpal = {git = "https://github.com/Nek/cpal", features = ["wasm-bindgen"] }
 fundsp = "0.9.0"
 ringbuf = "0.3.0-rc.0"
-futures = "0.3.24"
+wasm_thread = {version = "0.2.0", features = ["es_modules"]}
+stdweb = "0.4.20"
+# wasm-bindgen-futures = {version = "0.4.33", features = ["futures-core-03-stream", "futures-core"]}
+# wasm-futures-executor = "0.2.0"
+# futures-executor = "0.3.24"
 
 # native:
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -22,7 +25,6 @@ tracing-subscriber = "0.3"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-wasm_thread = {version = "0.2.0", features = ["es_modules"]}
 console_error_panic_hook = "0.1.6"
 tracing-wasm = "0.2"
 web-sys = {version = "0.3.60", features = ["Window", "Document", "Event", "AddEventListenerOptions", "EventTarget"]}
