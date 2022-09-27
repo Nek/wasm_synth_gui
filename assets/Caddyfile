@@ -1,0 +1,8 @@
+localhost:1234 {
+        file_server
+        header {
+                Access-Control-Allow-Methods "POST, GET"
+                Cross-Origin-Embedder-Policy: "require-corp"
+                Cross-Origin-Opener-Policy: "same-origin"
+        }
+}
