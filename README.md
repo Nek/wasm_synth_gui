@@ -1,5 +1,5 @@
 ### What it is?
-Cross desktop and browsers audio DSP app templae with GUI in Rust. It's just a setup of a project. I'm not the author of any libraries used.
+Cross desktop and browsers audio DSP app template with GUI in Rust. It's just a setup of a project. I'm not the author of any libraries used.
 
 ### Features
 - an audio DSP library that works both in the browsers (Firefox, Chrome, Safari, probably Edge, not IE) and on the desktop (only macOS for now);
