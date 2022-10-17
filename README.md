@@ -1,30 +1,32 @@
+### What it is?
+Cross desktop and browsers audio DSP app templae with GUI in Rust. It's just a setup of a project. I'm not the author of any libraries used.
+
+### Features
+- an audio DSP library that works both in the browsers (Firefox, Chrome, Safari, probably Edge, not IE) and on the desktop (only macOS for now);
+- cross-platform UI, OpenGL on a desktop, WebGL in a browser;
+- multithreaded on all the platforms;
+- same code for all the platforms, there is a bit of glue code, you don't have to touch it.
+
+### Requirements
+- nightly Rust;
+- trunk;
+- some experimental features, check `.cargo/config.toml`.
+
 ### Testing locally
 
-Make sure you are using the latest version of stable rust by running `rustup update`.
+#### Desktop
 
 `cargo run --release`
 
-On Linux you need to first run:
+#### Web
 
-`sudo apt-get install libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libspeechd-dev libxkbcommon-dev libssl-dev`
+`trunk build --release` and use a local web server or web hosting.
 
-On Fedora Rawhide you need to run:
+This is due to the browser sandbox limitations for running wasm and web audio.
+Configs for Caddy and Netlify are included.
 
-`dnf install clang clang-devel clang-tools-extra speech-dispatcher-devel libxkbcommon-devel pkg-config openssl-devel libxcb-devel fontconfig-devel`
+### Web Demo
 
-### Web Locally
+[wasm-synth-gui.nikdudnik.com](https://wasm-synth-gui.nikdudnik.com/)
 
-You can compile your app to [WASM](https://en.wikipedia.org/wiki/WebAssembly) and publish it as a web page.
-
-We use [Trunk](https://trunkrs.dev/) to build for web target.
-1. Install Trunk with `cargo install --locked trunk`.
-2. Run `trunk serve` to build and serve on `http://127.0.0.1:8080`. Trunk will rebuild automatically if you edit the project.
-3. Open `http://127.0.0.1:8080/index.html#dev` in a browser. See the warning below.
-
-> `assets/sw.js` script will try to cache our app, and loads the cached version when it cannot connect to server allowing your app to work offline (like PWA).
-> appending `#dev` to `index.html` will skip this caching, allowing us to load the latest builds during development.
-
-### Web Deploy
-1. Just run `trunk build --release`.
-2. It will generate a `dist` directory as a "static html" website
-3. Upload the `dist` directory to any of the numerous free hosting websites including [GitHub Pages](https://docs.github.com/en/free-pro-team@latest/github/working-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site).
+It will play a simple sinusoid signal.
