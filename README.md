@@ -12,7 +12,7 @@ Cross desktop and browsers audio DSP app template with GUI in Rust. It's just a 
 - trunk;
 - some experimental features, check `.cargo/config.toml`.
 
-### Testing locally
+### Running
 
 #### Desktop
 
